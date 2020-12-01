@@ -687,7 +687,7 @@ public class KeychainModule extends ReactContextBaseJavaModule {
 
         if (BiometricPrompt.ERROR_NEGATIVE_BUTTON == handler.getErrorCode()) {
           CryptoFailedException error = new CryptoFailedException("code: " + handler.getErrorCode() + ", msg: " + "Request cancelled by user");;
-          error.setCode(handler.getErrorCode());
+          error.setErrorCode(handler.getErrorCode());
           throw error;
         }
         if (null == handler.getResult()) {
@@ -971,7 +971,7 @@ public class KeychainModule extends ReactContextBaseJavaModule {
         @Override
         public void onAuthenticationError(final int errorCode, @NonNull final CharSequence errString) {
             final CryptoFailedException error = new CryptoFailedException("code: " + errorCode + ", msg: " + errString);
-            error.setCode(errorCode);
+            error.setErrorCode(errorCode);
             this.errorCode.set(errorCode);
             Log.d("BIOAUTH", "onAuthenticationError");
             Log.d("BIOAUTH", error.getMessage(), error);

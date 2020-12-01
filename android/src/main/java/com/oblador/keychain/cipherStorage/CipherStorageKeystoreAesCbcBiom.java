@@ -83,8 +83,8 @@ public class CipherStorageKeystoreAesCbcBiom extends CipherStorageBase {
             cipher.init(Cipher.ENCRYPT_MODE, key);
             handler.askAccessPermissionsEncryption(context, cipher);
             if (BiometricPrompt.ERROR_NEGATIVE_BUTTON == handler.getErrorCode()) {
-              CryptoFailedException error = new CryptoFailedException("code: " + handler.getErrorCode() + ", msg: " + "Request cancelled by user");
-              error.setCode(handler.getErrorCode());
+              CryptoFailedException error = new CryptoFailedException("ERROR_NEGATIVE_BUTTON");
+              error.setErrorCode(handler.getErrorCode());
               throw error;
             }
             if (null == handler.getEncryptionResult()) {

@@ -6,7 +6,7 @@ import java.security.GeneralSecurityException;
 
 public class CryptoFailedException extends GeneralSecurityException {
 
-  private int code;
+  private int errorCode;
 
   public CryptoFailedException(String message) {
     super(message);
@@ -26,11 +26,11 @@ public class CryptoFailedException extends GeneralSecurityException {
 
   }
 
-  public int getCode() {
-    return code;
+  public int getErrorCode() {
+    return errorCode;
   }
 
-  public void setCode(int code) {
-    this.code = code;
+  public void setErrorCode(int errorCode) {
+    this.errorCode = errorCode;
   }
 }
