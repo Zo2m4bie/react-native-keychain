@@ -39,6 +39,8 @@ import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.crypto.Cipher;
 
@@ -683,6 +685,11 @@ public class KeychainModule extends ReactContextBaseJavaModule {
 
         CryptoFailedException.reThrowOnError(handler.getError());
 
+        if (BiometricPrompt.ERROR_NEGATIVE_BUTTON == handler.getErrorCode()) {
+          CryptoFailedException error = new CryptoFailedException("code: " + handler.getErrorCode() + ", msg: " + "Request cancelled by user");;
+          error.setCode(handler.getErrorCode());
+          throw error;
+        }
         if (null == handler.getResult()) {
             throw new CryptoFailedException("No decryption results and no error. Something deeply wrong!");
         }
@@ -886,6 +893,7 @@ public class KeychainModule extends ReactContextBaseJavaModule {
         private CipherStorage.EncryptContext encryptContext;
         private DecryptionContext context;
         private PromptInfo promptInfo;
+        private AtomicInteger errorCode = new AtomicInteger(-1);
 
         private InteractiveBiometric(@NonNull final CipherStorage storage, @NonNull final PromptInfo promptInfo) {
             this.storage = (CipherStorageBase) storage;
@@ -946,7 +954,12 @@ public class KeychainModule extends ReactContextBaseJavaModule {
             return result;
         }
 
-        @Nullable
+        @Override
+        public int getErrorCode() {
+          return errorCode.get();
+        }
+
+      @Nullable
         @Override
         public Throwable getError() {
             return error;
@@ -958,12 +971,19 @@ public class KeychainModule extends ReactContextBaseJavaModule {
         @Override
         public void onAuthenticationError(final int errorCode, @NonNull final CharSequence errString) {
             final CryptoFailedException error = new CryptoFailedException("code: " + errorCode + ", msg: " + errString);
+            error.setCode(errorCode);
+            this.errorCode.set(errorCode);
             Log.d("BIOAUTH", "onAuthenticationError");
             Log.d("BIOAUTH", error.getMessage(), error);
             onDecrypt(null, error);
         }
 
-        /**
+      @Override
+      public void onAuthenticationFailed() {
+        super.onAuthenticationFailed();
+      }
+
+      /**
          * Called when a biometric is recognized.
          */
         @Override
@@ -1018,7 +1038,7 @@ public class KeychainModule extends ReactContextBaseJavaModule {
                 waitResult();
                 return;
             }
-
+            this.errorCode.set(-1);
             final BiometricPrompt prompt = new BiometricPrompt(activity, executor, this);
 
             prompt.authenticate(promptInfo, new BiometricPrompt.CryptoObject(cipher));

@@ -307,6 +307,11 @@ public class CipherStorageKeystoreAesCbcBiom extends CipherStorageBase {
             return result;
         }
 
+        @Override
+        public int getErrorCode() {
+          return 0;
+        }
+
         @Nullable
         @Override
         public EncryptionResult getEncryptionResult() {
