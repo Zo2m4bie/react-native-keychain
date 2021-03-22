@@ -9,6 +9,7 @@ import android.security.keystore.KeyProperties;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
+import androidx.biometric.BiometricPrompt;
 
 import com.oblador.keychain.KeychainModule;
 import com.oblador.keychain.SecurityLevel;
@@ -81,7 +82,11 @@ public class CipherStorageKeystoreAesCbcBiom extends CipherStorageBase {
             Cipher cipher = getCachedInstance();
             cipher.init(Cipher.ENCRYPT_MODE, key);
             handler.askAccessPermissionsEncryption(context, cipher);
-
+            if (BiometricPrompt.ERROR_NEGATIVE_BUTTON == handler.getErrorCode()) {
+              CryptoFailedException error = new CryptoFailedException("ERROR_NEGATIVE_BUTTON");
+              error.setErrorCode(handler.getErrorCode());
+              throw error;
+            }
             if (null == handler.getEncryptionResult()) {
                 throw new CryptoFailedException("No encryption results. Something deeply wrong!");
             }
@@ -305,6 +310,11 @@ public class CipherStorageKeystoreAesCbcBiom extends CipherStorageBase {
         @Override
         public DecryptionResult getResult() {
             return result;
+        }
+
+        @Override
+        public int getErrorCode() {
+          return 0;
         }
 
         @Nullable

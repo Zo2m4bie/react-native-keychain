@@ -99,6 +99,8 @@ public interface CipherStorage {
     @Nullable
     DecryptionResult getResult();
 
+    int getErrorCode();
+
     @Nullable
     EncryptionResult getEncryptionResult();
     /** Get reference on capture error. */

@@ -5,6 +5,9 @@ import androidx.annotation.Nullable;
 import java.security.GeneralSecurityException;
 
 public class CryptoFailedException extends GeneralSecurityException {
+
+  private int errorCode;
+
   public CryptoFailedException(String message) {
     super(message);
   }
@@ -21,5 +24,13 @@ public class CryptoFailedException extends GeneralSecurityException {
 
     throw new CryptoFailedException("Wrapped error: " + error.getMessage(), error);
 
+  }
+
+  public int getErrorCode() {
+    return errorCode;
+  }
+
+  public void setErrorCode(int errorCode) {
+    this.errorCode = errorCode;
   }
 }
