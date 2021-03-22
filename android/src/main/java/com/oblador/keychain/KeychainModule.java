@@ -10,6 +10,7 @@ import androidx.annotation.Nullable;
 import androidx.annotation.StringDef;
 import androidx.biometric.BiometricPrompt;
 import androidx.biometric.BiometricPrompt.PromptInfo;
+import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 
 import com.facebook.react.bridge.Arguments;
@@ -34,6 +35,7 @@ import com.oblador.keychain.exceptions.CryptoFailedException;
 import com.oblador.keychain.exceptions.EmptyParameterException;
 import com.oblador.keychain.exceptions.KeyStoreAccessException;
 
+import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executor;
@@ -703,7 +705,7 @@ public class KeychainModule extends ReactContextBaseJavaModule {
     @NonNull
     protected DecryptionResultHandler getInteractiveHandler(@NonNull final CipherStorage current, @NonNull final PromptInfo promptInfo) {
         if (current.isBiometrySupported() /*&& isFingerprintAuthAvailable()*/) {
-            return new InteractiveBiometric(current, promptInfo);
+            return new InteractiveBiometric(current, promptInfo, (FragmentActivity) getCurrentActivity());
         }
 
         return new CipherStorageKeystoreAesCbcBiom.NonInteractiveHandler();
@@ -894,10 +896,12 @@ public class KeychainModule extends ReactContextBaseJavaModule {
         private DecryptionContext context;
         private PromptInfo promptInfo;
         private AtomicInteger errorCode = new AtomicInteger(-1);
+        private WeakReference<FragmentActivity> activity;
 
-        private InteractiveBiometric(@NonNull final CipherStorage storage, @NonNull final PromptInfo promptInfo) {
+        private InteractiveBiometric(@NonNull final CipherStorage storage, @NonNull final PromptInfo promptInfo, FragmentActivity activity) {
             this.storage = (CipherStorageBase) storage;
             this.promptInfo = promptInfo;
+            this.activity = new WeakReference<>(activity);
         }
 
         @Override
@@ -1029,17 +1033,18 @@ public class KeychainModule extends ReactContextBaseJavaModule {
          * trigger interactive authentication.
          */
         public void startAuthentication(Cipher cipher) {
-            final FragmentActivity activity = (FragmentActivity) getCurrentActivity();
-            if (null == activity) throw new NullPointerException("Not assigned current activity");
-
+            FragmentActivity fragmentActivity = this.activity.get();
+            if (fragmentActivity == null) {
+              return;
+            }
             // code can be executed only from MAIN thread
             if (Thread.currentThread() != Looper.getMainLooper().getThread()) {
-                activity.runOnUiThread(() -> startAuthentication(cipher));
+              fragmentActivity.runOnUiThread(() -> startAuthentication(cipher));
                 waitResult();
                 return;
             }
             this.errorCode.set(-1);
-            final BiometricPrompt prompt = new BiometricPrompt(activity, executor, this);
+            final BiometricPrompt prompt = new BiometricPrompt(fragmentActivity, executor, this);
 
             prompt.authenticate(promptInfo, new BiometricPrompt.CryptoObject(cipher));
         }
