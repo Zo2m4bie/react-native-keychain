@@ -999,8 +999,7 @@ public class KeychainModule extends ReactContextBaseJavaModule {
                     Cipher cipher = result.getCryptoObject().getCipher();
                     byte[] usernameBytes = cipher.update(context.username);
                     byte[] passBytes = cipher.doFinal(context.password);
-                    String username = new String(usernameBytes);
-                    String userNameAndPass = username + new String(passBytes);
+                    String userNameAndPass = usernameBytes != null ? new String(usernameBytes) + new String(passBytes) : new String(passBytes);
                     String[] data = userNameAndPass.split("\n");
                     final DecryptionResult decrypted = new DecryptionResult(
                             data[0],
