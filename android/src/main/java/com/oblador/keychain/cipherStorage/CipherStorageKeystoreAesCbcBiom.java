@@ -13,9 +13,10 @@ import androidx.biometric.BiometricPrompt;
 
 import com.oblador.keychain.KeychainModule;
 import com.oblador.keychain.SecurityLevel;
+import com.oblador.keychain.decryptionHandler.DecryptionResultHandlerNonInteractive;
 import com.oblador.keychain.exceptions.CryptoFailedException;
 import com.oblador.keychain.exceptions.KeyStoreAccessException;
-
+import com.oblador.keychain.decryptionHandler.DecryptionResultHandler;
 import java.security.GeneralSecurityException;
 import java.security.Key;
 import java.security.spec.KeySpec;
@@ -109,7 +110,8 @@ public class CipherStorageKeystoreAesCbcBiom extends CipherStorageBase {
                                     @NonNull final SecurityLevel level, byte[] vector)
             throws CryptoFailedException {
 
-        final NonInteractiveHandler handler = new NonInteractiveHandler();
+//        final NonInteractiveHandler handler = new NonInteractiveHandler();
+        final DecryptionResultHandlerNonInteractive handler = new DecryptionResultHandlerNonInteractive();
         decrypt(handler, alias, username, password, level, vector);
 
         CryptoFailedException.reThrowOnError(handler.getError());
@@ -147,7 +149,7 @@ public class CipherStorageKeystoreAesCbcBiom extends CipherStorageBase {
             final Cipher cipher = getCachedInstance();
             cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(vector));
 
-            handler.askAccessPermissions(context, cipher);
+            handler.askAccessPermissions(context);
         } catch (final Throwable fail) {
             // any other exception treated as a failure
             handler.onDecrypt(null, fail);
@@ -273,66 +275,66 @@ public class CipherStorageKeystoreAesCbcBiom extends CipherStorageBase {
     /**
      * Non interactive handler for decrypting the credentials.
      */
-    public static class NonInteractiveHandler implements DecryptionResultHandler {
-        private DecryptionResult result;
-        private Throwable error;
-        private EncryptionResult encryptionResult;
-
-        @Override
-        public void askAccessPermissions(@NonNull final DecryptionContext context, Cipher cipher) {
-            final CryptoFailedException failure = new CryptoFailedException(
-                    "Non interactive decryption mode.");
-
-            onDecrypt(null, failure);
-        }
-
-        @Override
-        public void onDecrypt(@Nullable final DecryptionResult decryptionResult,
-                              @Nullable final Throwable error) {
-            this.result = decryptionResult;
-            this.error = error;
-        }
-
-        @Override
-        public void onEncrypt(@Nullable EncryptionResult encryptionResult) {
-            this.encryptionResult = encryptionResult;
-        }
-
-        @Override
-        public void askAccessPermissionsEncryption(@NonNull EncryptContext context, Cipher cipher) {
-            final CryptoFailedException failure = new CryptoFailedException(
-                    "Non interactive encryption mode.");
-
-            onDecrypt(null, failure);
-        }
-
-        @Nullable
-        @Override
-        public DecryptionResult getResult() {
-            return result;
-        }
-
-        @Override
-        public int getErrorCode() {
-          return 0;
-        }
-
-        @Nullable
-        @Override
-        public EncryptionResult getEncryptionResult() {
-            return encryptionResult;
-        }
-
-        @Nullable
-        @Override
-        public Throwable getError() {
-            return error;
-        }
-
-        @Override
-        public void waitResult() {
-            /* do nothing, expected synchronized call in one thread */
-        }
-    }
+//    public static class NonInteractiveHandler implements DecryptionResultHandler {
+//        private DecryptionResult result;
+//        private Throwable error;
+//        private EncryptionResult encryptionResult;
+//
+//        @Override
+//        public void askAccessPermissions(@NonNull final DecryptionContext context, Cipher cipher) {
+//            final CryptoFailedException failure = new CryptoFailedException(
+//                    "Non interactive decryption mode.");
+//
+//            onDecrypt(null, failure);
+//        }
+//
+//        @Override
+//        public void onDecrypt(@Nullable final DecryptionResult decryptionResult,
+//                              @Nullable final Throwable error) {
+//            this.result = decryptionResult;
+//            this.error = error;
+//        }
+//
+//        @Override
+//        public void onEncrypt(@Nullable EncryptionResult encryptionResult) {
+//            this.encryptionResult = encryptionResult;
+//        }
+//
+//        @Override
+//        public void askAccessPermissionsEncryption(@NonNull EncryptContext context, Cipher cipher) {
+//            final CryptoFailedException failure = new CryptoFailedException(
+//                    "Non interactive encryption mode.");
+//
+//            onDecrypt(null, failure);
+//        }
+//
+//        @Nullable
+//        @Override
+//        public DecryptionResult getResult() {
+//            return result;
+//        }
+//
+//        @Override
+//        public int getErrorCode() {
+//          return 0;
+//        }
+//
+//        @Nullable
+//        @Override
+//        public EncryptionResult getEncryptionResult() {
+//            return encryptionResult;
+//        }
+//
+//        @Nullable
+//        @Override
+//        public Throwable getError() {
+//            return error;
+//        }
+//
+//        @Override
+//        public void waitResult() {
+//            /* do nothing, expected synchronized call in one thread */
+//        }
+//    }
     //endregion
 }

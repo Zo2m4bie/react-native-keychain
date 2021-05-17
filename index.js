@@ -4,9 +4,9 @@ import { NativeModules, Platform } from 'react-native';
 const { RNKeychainManager } = NativeModules;
 
 export const SECURITY_LEVEL = Object.freeze({
-  ANY: RNKeychainManager.SECURITY_LEVEL_ANY,
-  SECURE_SOFTWARE: RNKeychainManager.SECURITY_LEVEL_SECURE_SOFTWARE,
-  SECURE_HARDWARE: RNKeychainManager.SECURITY_LEVEL_SECURE_HARDWARE,
+  ANY: RNKeychainManager && RNKeychainManager.SECURITY_LEVEL_ANY,
+  SECURE_SOFTWARE: RNKeychainManager && RNKeychainManager.SECURITY_LEVEL_SECURE_SOFTWARE,
+  SECURE_HARDWARE: RNKeychainManager && RNKeychainManager.SECURITY_LEVEL_SECURE_HARDWARE,
 });
 
 export const ACCESSIBLE = Object.freeze({
@@ -208,6 +208,14 @@ export function resetGenericPassword(
 }
 
 /**
+ * Gets all `service` keys used in keychain entries.
+ * @return {Promise} Resolves to an array of strings
+ */
+export async function getAllGenericPasswordServices(): Promise<string[]> {
+  return RNKeychainManager.getAllGenericPasswordServices();
+}
+
+/**
  * Checks if we have a login combination for `server`.
  * @param {string} server URL to server.
  * @return {Promise} Resolves to `{service, storage}` when successful
@@ -377,6 +385,7 @@ export default {
   resetInternetCredentials,
   setGenericPassword,
   getGenericPassword,
+  getAllGenericPasswordServices,
   resetGenericPassword,
   requestSharedWebCredentials,
   setSharedWebCredentials,

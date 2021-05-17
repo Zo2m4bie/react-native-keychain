@@ -13,6 +13,7 @@ import com.facebook.crypto.Crypto;
 import com.facebook.crypto.CryptoConfig;
 import com.facebook.crypto.Entity;
 import com.facebook.crypto.keychain.KeyChain;
+import com.oblador.keychain.decryptionHandler.DecryptionResultHandler;
 import com.facebook.react.bridge.AssertionException;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.oblador.keychain.KeychainModule.KnownCiphers;

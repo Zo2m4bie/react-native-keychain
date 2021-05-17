@@ -6,7 +6,8 @@ import androidx.annotation.Nullable;
 import com.oblador.keychain.SecurityLevel;
 import com.oblador.keychain.exceptions.CryptoFailedException;
 import com.oblador.keychain.exceptions.KeyStoreAccessException;
-
+import com.oblador.keychain.decryptionHandler.DecryptionResultHandler;
+import java.util.Set;
 import java.security.Key;
 
 import javax.crypto.Cipher;
@@ -93,37 +94,37 @@ public interface CipherStorage {
     }
   }
 
-  /** Get access to the results of decryption via properties. */
-  interface WithResults {
-    /** Get reference on results. */
-    @Nullable
-    DecryptionResult getResult();
-
-    int getErrorCode();
-
-    @Nullable
-    EncryptionResult getEncryptionResult();
-    /** Get reference on capture error. */
-    @Nullable
-    Throwable getError();
-
-    /** Block thread and wait for any result of execution. */
-    void waitResult();
-  }
-
-  /** Handler that allows to inject some actions during decrypt operations. */
-  interface DecryptionResultHandler extends WithResults {
-    /** Ask user for interaction, often its unlock of keystore by biometric data providing. */
-    void askAccessPermissions(@NonNull final DecryptionContext context, Cipher cipher);
-
-    /**
-     *
-     */
-    void onDecrypt(@Nullable final DecryptionResult decryptionResult, @Nullable final Throwable error);
-    void onEncrypt(@Nullable final EncryptionResult encryptionResult);
-    void askAccessPermissionsEncryption(@NonNull final CipherStorage.EncryptContext context, Cipher cipher);
-  }
-  //endregion
+//  /** Get access to the results of decryption via properties. */
+//  interface WithResults {
+//    /** Get reference on results. */
+//    @Nullable
+//    DecryptionResult getResult();
+//
+//    int getErrorCode();
+//
+//    @Nullable
+//    EncryptionResult getEncryptionResult();
+//    /** Get reference on capture error. */
+//    @Nullable
+//    Throwable getError();
+//
+//    /** Block thread and wait for any result of execution. */
+//    void waitResult();
+//  }
+//
+//  /** Handler that allows to inject some actions during decrypt operations. */
+//  interface DecryptionResultHandler extends WithResults {
+//    /** Ask user for interaction, often its unlock of keystore by biometric data providing. */
+//    void askAccessPermissions(@NonNull final DecryptionContext context, Cipher cipher);
+//
+//    /**
+//     *
+//     */
+//    void onDecrypt(@Nullable final DecryptionResult decryptionResult, @Nullable final Throwable error);
+//    void onEncrypt(@Nullable final EncryptionResult encryptionResult);
+//    void askAccessPermissionsEncryption(@NonNull final CipherStorage.EncryptContext context, Cipher cipher);
+//  }
+//  //endregion
 
   //region API
 
@@ -159,6 +160,13 @@ public interface CipherStorage {
 
   /** Remove key (by alias) from storage. */
   void removeKey(@NonNull final String alias) throws KeyStoreAccessException;
+
+  /**
+   * Return all keys present in this storage.
+   * @return key aliases
+   */
+  Set<String> getAllKeys() throws KeyStoreAccessException;
+
   //endregion
 
   //region Configuration

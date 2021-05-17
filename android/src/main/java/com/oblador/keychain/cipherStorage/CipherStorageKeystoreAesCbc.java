@@ -13,7 +13,7 @@ import com.oblador.keychain.KeychainModule.KnownCiphers;
 import com.oblador.keychain.SecurityLevel;
 import com.oblador.keychain.exceptions.CryptoFailedException;
 import com.oblador.keychain.exceptions.KeyStoreAccessException;
-
+import com.oblador.keychain.decryptionHandler.DecryptionResultHandler;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.security.Key;

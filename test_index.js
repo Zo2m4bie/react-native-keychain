@@ -106,7 +106,9 @@ resetGenericPassword().then(result => {
 });
 resetGenericPassword(simpleOptions);
 resetGenericPassword('service');
-
+getAllGenericPasswordServices().then((result) => {
+  (result: string[]);
+});
 requestSharedWebCredentials().then(result => {
   if (result) {
     (result.server: string);

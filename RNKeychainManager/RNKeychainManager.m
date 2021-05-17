@@ -266,6 +266,35 @@ SecAccessControlCreateFlags accessControlValue(NSDictionary *options)
   return SecItemDelete((__bridge CFDictionaryRef) query);
 }
 
+-(NSArray<NSString*>*)getAllServicesForSecurityClasses:(NSArray *)secItemClasses
+{
+  NSMutableDictionary *query = [NSMutableDictionary dictionaryWithObjectsAndKeys:
+                                (__bridge id)kCFBooleanTrue, (__bridge id)kSecReturnAttributes,
+                                (__bridge id)kSecMatchLimitAll, (__bridge id)kSecMatchLimit,
+                                nil];
+  NSMutableArray<NSString*> *services = [NSMutableArray<NSString*> new];
+  for (id secItemClass in secItemClasses) {
+    [query setObject:secItemClass forKey:(__bridge id)kSecClass];
+    NSArray *result = nil;
+    CFTypeRef resultRef = NULL;
+    OSStatus osStatus = SecItemCopyMatching((__bridge CFDictionaryRef)query, (CFTypeRef*)&resultRef);
+    if (osStatus != noErr && osStatus != errSecItemNotFound) {
+      NSError *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:osStatus userInfo:nil];
+      @throw error;
+    } else if (osStatus != errSecItemNotFound) {
+      result = (__bridge NSArray*)(resultRef);
+      if (result != NULL) {
+        for (id entry in result) {
+          NSString *service = [entry objectForKey:(__bridge NSString *)kSecAttrService];
+          [services addObject:service];
+        }
+      }
+    }
+  }
+
+  return services;
+}
+
 #pragma mark - RNKeychain
 
 #if TARGET_OS_IOS
@@ -286,13 +315,26 @@ RCT_EXPORT_METHOD(canCheckAuthentication:(NSDictionary * __nullable)options
 }
 #endif
 
+RCT_EXPORT_METHOD(getAllGenericPasswordServices:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+{
+  @try {
+    NSArray *secItemClasses = [NSArray arrayWithObjects:
+                              (__bridge id)kSecClassGenericPassword,
+                              nil];
+    NSArray *services = [self getAllServicesForSecurityClasses:secItemClasses];
+    return resolve(services);
+  } @catch (NSError *nsError) {
+    return rejectWithError(reject, nsError);
+  }
+}
+
 #if TARGET_OS_IOS
 RCT_EXPORT_METHOD(getSupportedBiometryType:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
   NSError *aerr = nil;
   LAContext *context = [LAContext new];
-  BOOL canBeProtected = [context canEvaluatePolicy:LAPolicyDeviceOwnerAuthentication error:&aerr];
+  BOOL canBeProtected = [context canEvaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics error:&aerr];
 
   if (!aerr && canBeProtected) {
     if (@available(iOS 11, *)) {
@@ -300,7 +342,9 @@ RCT_EXPORT_METHOD(getSupportedBiometryType:(RCTPromiseResolveBlock)resolve
         return resolve(kBiometryTypeFaceID);
       }
     }
-    return resolve(kBiometryTypeTouchID);
+    if (context.biometryType == LABiometryTypeTouchID) {
+       return resolve(kBiometryTypeTouchID);
+    }
   }
 
   return resolve([NSNull null]);

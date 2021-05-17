@@ -11,6 +11,7 @@ import androidx.annotation.NonNull;
 import androidx.biometric.BiometricManager;
 
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
+import static androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG;
 import static androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS;
 
 /**
@@ -18,8 +19,8 @@ import static androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS;
  */
 @SuppressWarnings({"WeakerAccess", "deprecation"})
 public class DeviceAvailability {
-  public static boolean isBiometricAuthAvailable(@NonNull final Context context) {
-    return BiometricManager.from(context).canAuthenticate() == BIOMETRIC_SUCCESS;
+  public static boolean isStrongBiometricAuthAvailable(@NonNull final Context context) {
+    return BiometricManager.from(context).canAuthenticate(BIOMETRIC_STRONG) == BIOMETRIC_SUCCESS;
   }
 
   public static boolean isFingerprintAuthAvailable(@NonNull final Context context) {
@@ -52,14 +53,5 @@ public class DeviceAvailability {
 
     // before api28
     return context.checkSelfPermission(Manifest.permission.USE_FINGERPRINT) == PERMISSION_GRANTED;
-  }
-
-  public static boolean isDeviceSecure(@NonNull final Context context) {
-    final KeyguardManager km =
-      (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
-
-    return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-      km != null &&
-      km.isDeviceSecure();
   }
 }

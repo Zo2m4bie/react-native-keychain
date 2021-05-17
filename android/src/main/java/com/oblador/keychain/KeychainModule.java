@@ -12,9 +12,8 @@ import androidx.biometric.BiometricPrompt;
 import androidx.biometric.BiometricPrompt.PromptInfo;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
-
+import androidx.biometric.BiometricManager;
 import com.facebook.react.bridge.Arguments;
-import com.facebook.react.bridge.AssertionException;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
@@ -23,9 +22,7 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
 import com.oblador.keychain.PrefsStorage.ResultSet;
 import com.oblador.keychain.cipherStorage.CipherStorage;
-import com.oblador.keychain.cipherStorage.CipherStorage.DecryptionContext;
 import com.oblador.keychain.cipherStorage.CipherStorage.DecryptionResult;
-import com.oblador.keychain.cipherStorage.CipherStorage.DecryptionResultHandler;
 import com.oblador.keychain.cipherStorage.CipherStorage.EncryptionResult;
 import com.oblador.keychain.cipherStorage.CipherStorageBase;
 import com.oblador.keychain.cipherStorage.CipherStorageFacebookConceal;
@@ -34,7 +31,8 @@ import com.oblador.keychain.cipherStorage.CipherStorageKeystoreAesCbcBiom;
 import com.oblador.keychain.exceptions.CryptoFailedException;
 import com.oblador.keychain.exceptions.EmptyParameterException;
 import com.oblador.keychain.exceptions.KeyStoreAccessException;
-
+import com.oblador.keychain.decryptionHandler.DecryptionResultHandler;
+import com.oblador.keychain.decryptionHandler.DecryptionResultHandlerProvider;
 import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.Map;
@@ -45,6 +43,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.crypto.Cipher;
+import static com.facebook.react.bridge.Arguments.makeNativeArray;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
+
 
 @SuppressWarnings({"unused", "WeakerAccess", "SameParameterValue"})
 public class KeychainModule extends ReactContextBaseJavaModule {
@@ -54,6 +58,7 @@ public class KeychainModule extends ReactContextBaseJavaModule {
     public static final String FACE_SUPPORTED_NAME = "Face";
     public static final String IRIS_SUPPORTED_NAME = "Iris";
     public static final String EMPTY_STRING = "";
+    public static final String WARMING_UP_ALIAS = "warmingUp";
 
     private static final String LOG_TAG = KeychainModule.class.getSimpleName();
 
@@ -203,7 +208,7 @@ public class KeychainModule extends ReactContextBaseJavaModule {
             final Cipher instance = best.getCachedInstance();
             final boolean isSecure = best.supportsSecureHardware();
             final SecurityLevel requiredLevel = isSecure ? SecurityLevel.SECURE_HARDWARE : SecurityLevel.SECURE_SOFTWARE;
-            best.generateKeyAndStoreUnderAlias("warmingUp", requiredLevel);
+            best.generateKeyAndStoreUnderAlias(WARMING_UP_ALIAS, requiredLevel);
             best.getKeyStoreAndLoad();
 
             Log.v(KEYCHAIN_MODULE, "warming up takes: " +
@@ -357,6 +362,39 @@ public class KeychainModule extends ReactContextBaseJavaModule {
         }
     }
 
+  @ReactMethod
+  public void getAllGenericPasswordServices(@NonNull final Promise promise) {
+    try {
+      Collection<String> services = doGetAllGenericPasswordServices();
+      promise.resolve(makeNativeArray(services.toArray()));
+
+    } catch (KeyStoreAccessException e) {
+      promise.reject(Errors.E_KEYSTORE_ACCESS_ERROR, e);
+    }
+  }
+
+  private Collection<String> doGetAllGenericPasswordServices() throws KeyStoreAccessException {
+    final Set<String> cipherNames = prefsStorage.getUsedCipherNames();
+
+    Collection<CipherStorage> ciphers = new ArrayList<>(cipherNames.size());
+    for (String storageName : cipherNames) {
+      final CipherStorage cipherStorage = getCipherStorageByName(storageName);
+      ciphers.add(cipherStorage);
+    }
+
+    Set<String> result = new HashSet<>();
+    for (CipherStorage cipher : ciphers) {
+      Set<String> aliases = cipher.getAllKeys();
+      for (String alias : aliases) {
+        if (!alias.equals(WARMING_UP_ALIAS)) {
+          result.add(alias);
+        }
+      }
+    }
+
+    return result;
+  }
+
     @ReactMethod
     public void getGenericPasswordForOptions(@Nullable final ReadableMap options,
                                              @NonNull final Promise promise) {
@@ -445,12 +483,16 @@ public class KeychainModule extends ReactContextBaseJavaModule {
     public void getSupportedBiometryType(@NonNull final Promise promise) {
         try {
             String reply = null;
-            if (isFaceAuthAvailable()) {
-                reply = FACE_SUPPORTED_NAME;
-            } else if (isIrisAuthAvailable()) {
-                reply = IRIS_SUPPORTED_NAME;
-            } else if (isFingerprintAuthAvailable()) {
+            if (!DeviceAvailability.isStrongBiometricAuthAvailable(getReactApplicationContext())) {
+              reply = null;
+            } else {
+              if (isFingerprintAuthAvailable()) {
                 reply = FINGERPRINT_SUPPORTED_NAME;
+              } else if (isFaceAuthAvailable()) {
+                reply = FACE_SUPPORTED_NAME;
+              } else if (isIrisAuthAvailable()) {
+                reply = IRIS_SUPPORTED_NAME;
+              }
             }
 
             promise.resolve(reply);
@@ -628,6 +670,13 @@ public class KeychainModule extends ReactContextBaseJavaModule {
             String promptInfoNegativeButton = promptInfoOptionsMap.getString(AuthPromptOptions.CANCEL);
             promptInfoBuilder.setNegativeButtonText(promptInfoNegativeButton);
         }
+
+      /* PromptInfo is only used in Biometric-enabled RSA storage and can only be unlocked by a strong biometric */
+        promptInfoBuilder.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG);
+
+        /* Bypass confirmation to avoid KeyStore unlock timeout being exceeded when using passive biometrics */
+        promptInfoBuilder.setConfirmationRequired(false);
+
         final PromptInfo promptInfo = promptInfoBuilder.build();
 
         return promptInfo;
@@ -704,11 +753,9 @@ public class KeychainModule extends ReactContextBaseJavaModule {
      */
     @NonNull
     protected DecryptionResultHandler getInteractiveHandler(@NonNull final CipherStorage current, @NonNull final PromptInfo promptInfo) {
-        if (current.isBiometrySupported() /*&& isFingerprintAuthAvailable()*/) {
-            return new InteractiveBiometric(current, promptInfo, (FragmentActivity) getCurrentActivity());
-        }
+      ReactApplicationContext reactContext = getReactApplicationContext();
 
-        return new CipherStorageKeystoreAesCbcBiom.NonInteractiveHandler();
+      return DecryptionResultHandlerProvider.getHandler(reactContext, current, promptInfo);
     }
 
     /**
@@ -823,21 +870,21 @@ public class KeychainModule extends ReactContextBaseJavaModule {
      * True - if fingerprint hardware available and configured, otherwise false.
      */
     /* package */ boolean isFingerprintAuthAvailable() {
-        return DeviceAvailability.isBiometricAuthAvailable(getReactApplicationContext()) && DeviceAvailability.isFingerprintAuthAvailable(getReactApplicationContext());
+      return DeviceAvailability.isStrongBiometricAuthAvailable(getReactApplicationContext()) && DeviceAvailability.isFingerprintAuthAvailable(getReactApplicationContext());
     }
 
     /**
      * True - if face recognition hardware available and configured, otherwise false.
      */
     /* package */ boolean isFaceAuthAvailable() {
-        return DeviceAvailability.isBiometricAuthAvailable(getReactApplicationContext()) && DeviceAvailability.isFaceAuthAvailable(getReactApplicationContext());
+      return DeviceAvailability.isStrongBiometricAuthAvailable(getReactApplicationContext()) && DeviceAvailability.isFaceAuthAvailable(getReactApplicationContext());
     }
 
     /**
      * True - if iris recognition hardware available and configured, otherwise false.
      */
     /* package */ boolean isIrisAuthAvailable() {
-        return DeviceAvailability.isBiometricAuthAvailable(getReactApplicationContext()) && DeviceAvailability.isIrisAuthAvailable(getReactApplicationContext());
+      return DeviceAvailability.isStrongBiometricAuthAvailable(getReactApplicationContext()) && DeviceAvailability.isIrisAuthAvailable(getReactApplicationContext());
     }
 
     /**
@@ -881,194 +928,194 @@ public class KeychainModule extends ReactContextBaseJavaModule {
     }
     //endregion
 
-    //region Nested declarations
-
-    /**
-     * Interactive user questioning for biometric data providing.
-     */
-    private class InteractiveBiometric extends BiometricPrompt.AuthenticationCallback implements DecryptionResultHandler {
-        private DecryptionResult result;
-        private EncryptionResult encryptionResult;
-        private Throwable error;
-        private final CipherStorageBase storage;
-        private final Executor executor = Executors.newSingleThreadExecutor();
-        private CipherStorage.EncryptContext encryptContext;
-        private DecryptionContext context;
-        private PromptInfo promptInfo;
-        private AtomicInteger errorCode = new AtomicInteger(-1);
-        private WeakReference<FragmentActivity> activity;
-
-        private InteractiveBiometric(@NonNull final CipherStorage storage, @NonNull final PromptInfo promptInfo, FragmentActivity activity) {
-            this.storage = (CipherStorageBase) storage;
-            this.promptInfo = promptInfo;
-            this.activity = new WeakReference<>(activity);
-        }
-
-        @Override
-        public void askAccessPermissions(@NonNull final DecryptionContext context, Cipher cipher) {
-            this.context = context;
-            encryptContext = null;
-            if (!DeviceAvailability.isPermissionsGranted(getReactApplicationContext())) {
-                final CryptoFailedException failure = new CryptoFailedException(
-                        "Could not start fingerprint Authentication. No permissions granted.");
-
-                onDecrypt(null, failure);
-            } else {
-                startAuthentication(cipher);
-            }
-        }
-
-        public EncryptionResult getEncryptionResult() {
-            return encryptionResult;
-        }
-
-        @Override
-        public void askAccessPermissionsEncryption(@NonNull final CipherStorage.EncryptContext context, Cipher cipher) {
-            encryptContext = context;
-            this.context = null;
-            final CryptoFailedException failure = new CryptoFailedException(
-                    "Non interactive decryption mode.");
-
-            startAuthentication(cipher);
-        }
-
-        @Override
-        public void onDecrypt(@Nullable final DecryptionResult decryptionResult, @Nullable final Throwable error) {
-            this.result = decryptionResult;
-            this.encryptionResult = null;
-            this.error = error;
-
-            synchronized (this) {
-                notifyAll();
-            }
-        }
-
-        @Override
-        public void onEncrypt(@Nullable final EncryptionResult encryptionResult) {
-            this.encryptionResult = encryptionResult;
-
-            synchronized (this) {
-                notifyAll();
-            }
-        }
-
-        @Nullable
-        @Override
-        public DecryptionResult getResult() {
-            return result;
-        }
-
-        @Override
-        public int getErrorCode() {
-          return errorCode.get();
-        }
-
-      @Nullable
-        @Override
-        public Throwable getError() {
-            return error;
-        }
-
-        /**
-         * Called when an unrecoverable error has been encountered and the operation is complete.
-         */
-        @Override
-        public void onAuthenticationError(final int errorCode, @NonNull final CharSequence errString) {
-            final CryptoFailedException error = new CryptoFailedException("code: " + errorCode + ", msg: " + errString);
-            error.setErrorCode(errorCode);
-            this.errorCode.set(errorCode);
-            Log.d("BIOAUTH", "onAuthenticationError");
-            Log.d("BIOAUTH", error.getMessage(), error);
-            onDecrypt(null, error);
-        }
-
-      @Override
-      public void onAuthenticationFailed() {
-        super.onAuthenticationFailed();
-      }
-
-      /**
-         * Called when a biometric is recognized.
-         */
-        @Override
-        public void onAuthenticationSucceeded(@NonNull final BiometricPrompt.AuthenticationResult result) {
-            Log.d("BIOAUTH", "onAuthenticationSucceeded");
-
-            try {
-                if (null != context) {
-                    Cipher cipher = result.getCryptoObject().getCipher();
-                    byte[] usernameBytes = cipher.update(context.username);
-                    byte[] passBytes = cipher.doFinal(context.password);
-                    String userNameAndPass = usernameBytes != null ? new String(usernameBytes) + new String(passBytes) : new String(passBytes);
-                    String[] data = userNameAndPass.split("\n");
-                    final DecryptionResult decrypted = new DecryptionResult(
-                            data[0],
-                            data[1]
-                    );
-
-                    onDecrypt(decrypted, null);
-                } else if (null != encryptContext) {
-
-                    Cipher cipher = result.getCryptoObject().getCipher();
-                    byte[] usernameBytes = (encryptContext.username.trim() + '\n').getBytes();
-                    byte[] passBytes = encryptContext.password.getBytes();
-                    byte[] encryptedUserName = cipher.update(usernameBytes);
-                    byte[] encryptedPassword = cipher.doFinal(passBytes);
-
-                    final EncryptionResult encrypted = new EncryptionResult(
-                            encryptedUserName,
-                            encryptedPassword,
-                            cipher.getIV(),
-                            KnownCiphers.AES_BIOM);
-                    onEncrypt(encrypted);
-                } else {
-                    throw new NullPointerException("Decrypt context is not assigned yet.");
-                }
-            } catch (Throwable fail) {
-                onDecrypt(null, fail);
-            }
-        }
-
-        /**
-         * trigger interactive authentication.
-         */
-        public void startAuthentication(Cipher cipher) {
-            FragmentActivity fragmentActivity = this.activity.get();
-            if (fragmentActivity == null) {
-              return;
-            }
-            // code can be executed only from MAIN thread
-            if (Thread.currentThread() != Looper.getMainLooper().getThread()) {
-              fragmentActivity.runOnUiThread(() -> startAuthentication(cipher));
-                waitResult();
-                return;
-            }
-            this.errorCode.set(-1);
-            final BiometricPrompt prompt = new BiometricPrompt(fragmentActivity, executor, this);
-
-            prompt.authenticate(promptInfo, new BiometricPrompt.CryptoObject(cipher));
-        }
-
-        /**
-         * Block current NON-main thread and wait for user authentication results.
-         */
-        @Override
-        public void waitResult() {
-            if (Thread.currentThread() == Looper.getMainLooper().getThread())
-                throw new AssertionException("method should not be executed from MAIN thread");
-
-            Log.i(KEYCHAIN_MODULE, "blocking thread. waiting for done UI operation.");
-
-            try {
-                synchronized (this) {
-                    wait();
-                }
-            } catch (InterruptedException ignored) {
-                /* shutdown sequence */
-            }
-
-            Log.i(KEYCHAIN_MODULE, "unblocking thread.");
-        }
-    }
-    //endregion
+//    //region Nested declarations
+//
+//    /**
+//     * Interactive user questioning for biometric data providing.
+//     */
+//    private class InteractiveBiometric extends BiometricPrompt.AuthenticationCallback implements DecryptionResultHandler {
+//        private DecryptionResult result;
+//        private EncryptionResult encryptionResult;
+//        private Throwable error;
+//        private final CipherStorageBase storage;
+//        private final Executor executor = Executors.newSingleThreadExecutor();
+//        private CipherStorage.EncryptContext encryptContext;
+//        private DecryptionContext context;
+//        private PromptInfo promptInfo;
+//        private AtomicInteger errorCode = new AtomicInteger(-1);
+//        private WeakReference<FragmentActivity> activity;
+//
+//        private InteractiveBiometric(@NonNull final CipherStorage storage, @NonNull final PromptInfo promptInfo, FragmentActivity activity) {
+//            this.storage = (CipherStorageBase) storage;
+//            this.promptInfo = promptInfo;
+//            this.activity = new WeakReference<>(activity);
+//        }
+//
+//        @Override
+//        public void askAccessPermissions(@NonNull final DecryptionContext context, Cipher cipher) {
+//            this.context = context;
+//            encryptContext = null;
+//            if (!DeviceAvailability.isPermissionsGranted(getReactApplicationContext())) {
+//                final CryptoFailedException failure = new CryptoFailedException(
+//                        "Could not start fingerprint Authentication. No permissions granted.");
+//
+//                onDecrypt(null, failure);
+//            } else {
+//                startAuthentication(cipher);
+//            }
+//        }
+//
+//        public EncryptionResult getEncryptionResult() {
+//            return encryptionResult;
+//        }
+//
+//        @Override
+//        public void askAccessPermissionsEncryption(@NonNull final CipherStorage.EncryptContext context, Cipher cipher) {
+//            encryptContext = context;
+//            this.context = null;
+//            final CryptoFailedException failure = new CryptoFailedException(
+//                    "Non interactive decryption mode.");
+//
+//            startAuthentication(cipher);
+//        }
+//
+//        @Override
+//        public void onDecrypt(@Nullable final DecryptionResult decryptionResult, @Nullable final Throwable error) {
+//            this.result = decryptionResult;
+//            this.encryptionResult = null;
+//            this.error = error;
+//
+//            synchronized (this) {
+//                notifyAll();
+//            }
+//        }
+//
+//        @Override
+//        public void onEncrypt(@Nullable final EncryptionResult encryptionResult) {
+//            this.encryptionResult = encryptionResult;
+//
+//            synchronized (this) {
+//                notifyAll();
+//            }
+//        }
+//
+//        @Nullable
+//        @Override
+//        public DecryptionResult getResult() {
+//            return result;
+//        }
+//
+//        @Override
+//        public int getErrorCode() {
+//          return errorCode.get();
+//        }
+//
+//      @Nullable
+//        @Override
+//        public Throwable getError() {
+//            return error;
+//        }
+//
+//        /**
+//         * Called when an unrecoverable error has been encountered and the operation is complete.
+//         */
+//        @Override
+//        public void onAuthenticationError(final int errorCode, @NonNull final CharSequence errString) {
+//            final CryptoFailedException error = new CryptoFailedException("code: " + errorCode + ", msg: " + errString);
+//            error.setErrorCode(errorCode);
+//            this.errorCode.set(errorCode);
+//            Log.d("BIOAUTH", "onAuthenticationError");
+//            Log.d("BIOAUTH", error.getMessage(), error);
+//            onDecrypt(null, error);
+//        }
+//
+//      @Override
+//      public void onAuthenticationFailed() {
+//        super.onAuthenticationFailed();
+//      }
+//
+//      /**
+//         * Called when a biometric is recognized.
+//         */
+//        @Override
+//        public void onAuthenticationSucceeded(@NonNull final BiometricPrompt.AuthenticationResult result) {
+//            Log.d("BIOAUTH", "onAuthenticationSucceeded");
+//
+//            try {
+//                if (null != context) {
+//                    Cipher cipher = result.getCryptoObject().getCipher();
+//                    byte[] usernameBytes = cipher.update(context.username);
+//                    byte[] passBytes = cipher.doFinal(context.password);
+//                    String userNameAndPass = usernameBytes != null ? new String(usernameBytes) + new String(passBytes) : new String(passBytes);
+//                    String[] data = userNameAndPass.split("\n");
+//                    final DecryptionResult decrypted = new DecryptionResult(
+//                            data[0],
+//                            data[1]
+//                    );
+//
+//                    onDecrypt(decrypted, null);
+//                } else if (null != encryptContext) {
+//
+//                    Cipher cipher = result.getCryptoObject().getCipher();
+//                    byte[] usernameBytes = (encryptContext.username.trim() + '\n').getBytes();
+//                    byte[] passBytes = encryptContext.password.getBytes();
+//                    byte[] encryptedUserName = cipher.update(usernameBytes);
+//                    byte[] encryptedPassword = cipher.doFinal(passBytes);
+//
+//                    final EncryptionResult encrypted = new EncryptionResult(
+//                            encryptedUserName,
+//                            encryptedPassword,
+//                            cipher.getIV(),
+//                            KnownCiphers.AES_BIOM);
+//                    onEncrypt(encrypted);
+//                } else {
+//                    throw new NullPointerException("Decrypt context is not assigned yet.");
+//                }
+//            } catch (Throwable fail) {
+//                onDecrypt(null, fail);
+//            }
+//        }
+//
+//        /**
+//         * trigger interactive authentication.
+//         */
+//        public void startAuthentication(Cipher cipher) {
+//            FragmentActivity fragmentActivity = this.activity.get();
+//            if (fragmentActivity == null) {
+//              return;
+//            }
+//            // code can be executed only from MAIN thread
+//            if (Thread.currentThread() != Looper.getMainLooper().getThread()) {
+//              fragmentActivity.runOnUiThread(() -> startAuthentication(cipher));
+//                waitResult();
+//                return;
+//            }
+//            this.errorCode.set(-1);
+//            final BiometricPrompt prompt = new BiometricPrompt(fragmentActivity, executor, this);
+//
+//            prompt.authenticate(promptInfo, new BiometricPrompt.CryptoObject(cipher));
+//        }
+//
+//        /**
+//         * Block current NON-main thread and wait for user authentication results.
+//         */
+//        @Override
+//        public void waitResult() {
+//            if (Thread.currentThread() == Looper.getMainLooper().getThread())
+//                throw new AssertionException("method should not be executed from MAIN thread");
+//
+//            Log.i(KEYCHAIN_MODULE, "blocking thread. waiting for done UI operation.");
+//
+//            try {
+//                synchronized (this) {
+//                    wait();
+//                }
+//            } catch (InterruptedException ignored) {
+//                /* shutdown sequence */
+//            }
+//
+//            Log.i(KEYCHAIN_MODULE, "unblocking thread.");
+//        }
+//    }
+//    //endregion
 }
